@@ -34,6 +34,7 @@ mappings {
 def mainPage() {
 	state.particleAPIUri = "https://api.particle.io/v1"
     state.particleEventName = "rf433"
+    state.particleSendCommandFunction = "rf433"
 	state.supportedCapabilities = ["Motion Sensor"]//,"Button","Contact Sensor"]
     state.maxNumDevices = 10
     populateSmartThingsAccessToken()
@@ -342,7 +343,7 @@ void deleteAccessToken() {
         def params = [
             uri: "${state.particleAPIUri}/access_tokens/${state.particleToken}",
             headers: [
-                'Authorization': "Basic ${settings.particleAuthEncoded}"
+                'Authorization': "Basic ${authEncoded}"
             ]
         ]
 
@@ -359,4 +360,11 @@ def deleteChildDevices() {
     delete.each {
         deleteChildDevice(it.deviceNetworkId)
     }
+}
+
+def sendRFCommand(command) {
+    httpPost(uri: "${state.particleAPIUri}/devices/${settings.particleDevice}/${state.particleSendCommandFunction}",
+             body: [access_token: state.particleToken,
+                    args: command]
+            ) { response -> log.debug "sendRFCommand response: " + response.data }
 }
