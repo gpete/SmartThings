@@ -25,6 +25,14 @@ metadata {
 	}
 }
 
+def init(Map attributes) {
+	device.inactivate()
+}
+
+def rename(newName) {
+	log.warn "Child device rename not yet implemented"
+}
+
 // parse events into attributes
 def parse(String event) {
 	log.debug "Parsing '${event}'"
