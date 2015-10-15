@@ -35,7 +35,6 @@ def mainPage() {
 	state.particleAPIUri = "https://api.particle.io/v1"
     state.particleEventName = "rf433"
     state.particleSendCommandFunction = "rf433"
-	state.supportedCapabilities = ["Motion Sensor"]//,"Button","Contact Sensor"]
     state.maxNumDevices = 10
     populateSmartThingsAccessToken()
     
@@ -56,66 +55,42 @@ def mainPage() {
 
 def manageDevicesPage() {
 	dynamicPage(name: "manageDevicesPage", nextPage: null, uninstall: false, install: false) {
-    	def supportedCapabilities = ["Button","Contact Sensor","Motion Sensor"]
+    	def supportedCapabilities = ["Motion Sensor", "Outlet"]
         
-//		  Can't use this due to the Android app not working with the inputs with dynamic names
-//        for (int i = 1; i <= state.maxNumDevices; i++) {
-//            section("Device ${i}") {
-//                input(name: "device${i}Name", title: "Device name", type: "text", required: false)
-//                input(name: "device${i}Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-//                input(name: "device${i}Code", title: "Device code", type: "text", required: false)
-//            }
-//        }
-
-        section("Device 1") {
-            input(name: "device1Name", title: "Device name", type: "text", required: false)
-            input(name: "device1Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device1Code", title: "Device code", type: "text", required: false)
+        // These input name arrays are needed for dynamically creating input fields in the mobile app
+        if (state.deviceNames?.size() != state.maxNumDevices) {        	
+            state.deviceNames = []
+            state.deviceTypes = []
+            state.deviceCodes = []
+            state.deviceCodes2 = []
+            for (int i = 0; i < state.maxNumDevices; i++) {
+                state.deviceNames[i] = "device${i}Name"
+                state.deviceTypes[i] = "device${i}Type"
+                state.deviceCodes[i] = "device${i}Code"
+                state.deviceCodes2[i] = "device${i}Code2"
+            }
         }
-        section("Device 2") {
-            input(name: "device2Name", title: "Device name", type: "text", required: false)
-            input(name: "device2Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device2Code", title: "Device code", type: "text", required: false)
-        }
-        section("Device 3") {
-            input(name: "device3Name", title: "Device name", type: "text", required: false)
-            input(name: "device3Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device3Code", title: "Device code", type: "text", required: false)
-        }
-        section("Device 4") {
-            input(name: "device4Name", title: "Device name", type: "text", required: false)
-            input(name: "device4Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device4Code", title: "Device code", type: "text", required: false)
-        }
-        section("Device 5") {
-            input(name: "device5Name", title: "Device name", type: "text", required: false)
-            input(name: "device5Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device5Code", title: "Device code", type: "text", required: false)
-        }
-        section("Device 6") {
-            input(name: "device6Name", title: "Device name", type: "text", required: false)
-            input(name: "device6Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device6Code", title: "Device code", type: "text", required: false)
-        }
-        section("Device 7") {
-            input(name: "device7Name", title: "Device name", type: "text", required: false)
-            input(name: "device7Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device7Code", title: "Device code", type: "text", required: false)
-        }
-        section("Device 8") {
-            input(name: "device8Name", title: "Device name", type: "text", required: false)
-            input(name: "device8Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device8Code", title: "Device code", type: "text", required: false)
-        }
-        section("Device 9") {
-            input(name: "device9Name", title: "Device name", type: "text", required: false)
-            input(name: "device9Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device9Code", title: "Device code", type: "text", required: false)
-        }
-        section("Device 10") {
-            input(name: "device10Name", title: "Device name", type: "text", required: false)
-            input(name: "device10Type", title: "Device type", type: "enum", required: false, options: supportedCapabilities)
-            input(name: "device10Code", title: "Device code", type: "text", required: false)
+        
+        for (int i = 0; i < state.maxNumDevices; i++) {
+            section(hideable: true, hidden: !state.deviceNames[i], "Device ${i + 1}") {
+                input(name: state.deviceNames[i], title: "Name", type: "text", required: false)
+                input(name: state.deviceTypes[i], title: "Type", type: "enum", required: false, options: supportedCapabilities, submitOnChange: true)
+                
+                def code1Title = "Code"
+                def code2Title = "Code2"
+                def code2Visible = false
+                switch (settings."${state.deviceTypes[i]}") {
+                	case "Outlet":
+                    	code1Title = "On Code"
+                        code2Title = "Off Code"
+                        code2Visible = true
+                        break
+                }
+                input(name: state.deviceCodes[i], title: code1Title, type: "text", required: false)
+                if (code2Visible) {
+                    input(name: state.deviceCodes2[i], title: code2Title, type: "text", required: false)
+                }
+            }
         }
     }
 }
@@ -197,12 +172,16 @@ def initialize() {
         def label = settings."device${i}Name"
         def type = settings."device${i}Type"
         def code = settings."device${i}Code"
+        def code2 = settings."device${i}Code2"
 
         if (label != null && type != null && code != null) {
             def deviceType
         	switch(type) {
                 case "Motion Sensor":
                     deviceType = "433 Motion"
+                    break
+                case "Outlet":
+                	deviceType = "433 Outlet"
                     break
             }
             
@@ -219,7 +198,7 @@ def initialize() {
             }
             if (!d) {
             	log.debug "Creating device ${label}"
-            	d = addChildDevice("gpete", deviceType, name, null, [label: label, name: name])
+            	d = addChildDevice("gpete", deviceType, name, null, [label: label, name: name, code: code, code2: code2])
                 d.inactivate()
                 //d.take()
             }
@@ -229,9 +208,9 @@ def initialize() {
         	deleteChildDevice(name)
         }
     }
-    //def d = addChildDevice("gpete", "433 Motion", "testMotion", null, [label:"motionLabel", name:"motionName"])
-    //def devices = getChildDevices()
-    devices.each {log.debug it.deviceNetworkId}
+    
+    def devices = getChildDevices()
+    devices.each { log.debug "Initialized device " + it.deviceNetworkId }
 }
 
 def parseIncomingData() {
