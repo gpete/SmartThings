@@ -167,12 +167,13 @@ def uninstalled() {
 }
 
 def initialize() {
-	for (int i = 1; i <= state.maxNumDevices; i++) {
+	for (int i = 0; i < state.maxNumDevices; i++) {
     	def name = "device${i}"
         def label = settings."device${i}Name"
         def type = settings."device${i}Type"
-        def code = settings."device${i}Code"
-        def code2 = settings."device${i}Code2"
+    	def attributes = [:]
+        attributes.code = settings."device${i}Code"
+        attributes.code2 = settings."device${i}Code2"
 
         if (label != null && type != null && code != null) {
             def deviceType
@@ -189,18 +190,26 @@ def initialize() {
             	log.debug "No device type ${type}"
             	continue
             }
-            
+
             def d = getChildDevice(name)
-            if (d && !d.displayName.equals(label)) {
-            	log.debug "Device name changed from ${d} to ${label}"
-            	deleteChildDevice(name)
+            if (d && !d.typeName.equals(type)) {
+            	log.debug "Device type changed from ${type} to ${d.typeName}, replacing with new device"
+                deleteChildDevice(name)
                 d = null
+            }
+            if (d && !d.label.equals(label)) {
+            	log.debug "Device name changed from ${d.label} to ${label}, renaming"
+            	d.rename(label)
             }
             if (!d) {
             	log.debug "Creating device ${label}"
-            	d = addChildDevice("gpete", deviceType, name, null, [label: label, name: name, code: code, code2: code2])
-                d.inactivate()
-                //d.take()
+            	d = addChildDevice("gpete", deviceType, name, null, [label: label, name: name, completedSetup: true])
+                try {
+                	d.init(attributes)
+                }
+                catch (all) {
+                	log.warn "Failed to initialize $name ($label)"
+                }
             }
         }
         else if (getChildDevice(name)) {
@@ -208,21 +217,47 @@ def initialize() {
         	deleteChildDevice(name)
         }
     }
-    
+
     def devices = getChildDevices()
     devices.each { log.debug "Initialized device " + it.deviceNetworkId }
 }
 
 def parseIncomingData() {
 	def data = new groovy.json.JsonSlurper().parseText(params.data)
+    if (!data || !data.data) {
+    	return
+    }
+
     log.debug "Data packet: " + data
+    def incomingData = data.data
     for (int i = 1; i <= state.maxNumDevices; i++) {
-    	def deviceCode = settings."device${i}Code"
-    	if(data?.data.equalsIgnoreCase(deviceCode)) {
-        	log.debug "Matched ${deviceCode} against ${data.data}"
-        	def d = getChildDevice("device${i}")
-            d?.activate()
-            scheduleEndMotion(i)
+        def deviceName = settings."device${i}Name"
+        def deviceType = settings."device${i}Type"
+    	def deviceCode1 = settings."device${i}Code"
+        def deviceCode2 = settings."device${i}Code2"
+        def isCode1Matched = incomingData.equalsIgnoreCase(deviceCode1)
+        def isCode2Matched = incomingData.equalsIgnoreCase(deviceCode2)
+        
+    	if(isCode1Matched || isCode2Matched) {
+        	log.debug "Matched ${incomingData} to $deviceName"
+            def d = getChildDevice("device${i}")
+            
+            switch (deviceType) {
+            	case "Motion Sensor":
+                	d?.activate()
+            		scheduleEndMotion(i)
+                    break
+                case "Outlet":
+                	if (isCode1Matched) {
+                    	log.debug deviceName + " on button pressed"
+                    	d?.sendOnEvent()
+                    }
+                    else if (isCode2Matched) {
+                    	log.debug deviceName + " off button pressed"
+                    	d?.sendOffEvent()
+                    }
+                    break
+            }
         }
     }
 }
@@ -278,7 +313,11 @@ void createWebhook() {
                     url: state.appURL,
                     requestType: "POST",
                     mydevices: true]
-            ) {response -> log.debug (response.data)}
+            )
+    {response ->
+    	state.particleWebhookId = response?.data?.id
+        log.debug "Created Particle Webhook, id: ${state.particleWebhookId}"
+    }
 }
 
 void checkWebhook() {
@@ -290,7 +329,7 @@ void checkWebhook() {
     def foundHook = false
     httpGet(uri:"${state.particleAPIUri}/webhooks?access_token=${state.particleToken}") { response -> response.data.each
         { hook ->
-            if (hook.event == state.particleEventName) {
+            if (hook.id == state.particleWebhookId) {
                 foundHook = true
                 log.debug "Found existing webhook id: ${hook.id}"
             }
@@ -305,7 +344,7 @@ void deleteWebhook() {
     try {
         httpGet(uri:"${state.particleAPIUri}/webhooks?access_token=${state.particleToken}") { response -> response.data.each
             { hook ->
-                if (hook.event == state.particleEventName) {
+                if (hook.id == state.particleWebhookId) {
                     httpDelete(uri:"${state.particleAPIUri}/webhooks/${hook.id}?access_token=${state.particleToken}")
                     log.debug "Deleted the existing webhook with the id: ${hook.id} and the event name: ${state.particleEventName}"
                 }
@@ -322,9 +361,7 @@ void deleteAccessToken() {
         def authEncoded = "${settings.particleUsername}:${settings.particlePassword}".bytes.encodeBase64()
         def params = [
             uri: "${state.particleAPIUri}/access_tokens/${state.particleToken}",
-            headers: [
-                'Authorization': "Basic ${authEncoded}"
-            ]
+            headers: [ 'Authorization': "Basic ${authEncoded}" ]
         ]
 
         httpDelete(params)
@@ -343,8 +380,14 @@ def deleteChildDevices() {
 }
 
 def sendRFCommand(command) {
-    httpPost(uri: "${state.particleAPIUri}/devices/${settings.particleDevice}/${state.particleSendCommandFunction}",
-             body: [access_token: state.particleToken,
-                    args: command]
-            ) { response -> log.debug "sendRFCommand response: " + response.data }
+    try {
+        httpPost(uri: "${state.particleAPIUri}/devices/${settings.particleDevice}/${state.particleSendCommandFunction}",
+                 body: [access_token: state.particleToken,
+                        args: command]
+                ) { response -> log.debug "sendRFCommand response: " + response.data }
+    }
+    catch (all) {
+        return "Failed to send command $command to Photon: " + all
+    }
+    return "Sent command " + command + " to the Photon"
 }
