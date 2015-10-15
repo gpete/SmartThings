@@ -250,13 +250,14 @@ def parseIncomingData() {
 
 def scheduleEndMotion(i) {
 	if (!state.lastActiveTimes) {
+    	log.debug "Initializing last active times array"
     	state.lastActiveTimes = []
     }
     
     def needsToBeScheduled = true
-    def timeoutMS = 4 * settings.inactiveCheckTime * 1000
     for (time in state.lastActiveTimes) {
-    	if (time && time > now() - timeoutMS) {
+    	// Don't schedule if there is a last active time in the array
+    	if (time) {
         	needsToBeScheduled = false
             break
         }
