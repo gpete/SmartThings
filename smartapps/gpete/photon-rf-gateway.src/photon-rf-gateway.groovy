@@ -257,7 +257,7 @@ def parseIncomingData() {
 
 def codesMatch(codeA, codeB) {
 	def shortA = codeA?.size() > 8 && codeA[2..3].equals("00") ? codeA[8..codeA.size()-1] : codeA
-    def shortB = codeB.size() > 8 && codeB[2..3].equals("00") ? codeB[8..codeB.size()-1] : codeB
+    def shortB = codeB?.size() > 8 && codeB[2..3].equals("00") ? codeB[8..codeB.size()-1] : codeB
 	return shortA?.equalsIgnoreCase(shortB)
 }
 
