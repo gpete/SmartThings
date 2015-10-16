@@ -175,7 +175,7 @@ def initialize() {
         attributes.code = settings."device${i}Code"
         attributes.code2 = settings."device${i}Code2"
 
-        if (label != null && type != null && code != null) {
+        if (label != null && type != null && attributes.code != null) {
             def deviceType
         	switch(type) {
                 case "Motion Sensor":
@@ -192,11 +192,6 @@ def initialize() {
             }
 
             def d = getChildDevice(name)
-            if (d && !d.typeName.equals(type)) {
-            	log.debug "Device type changed from ${type} to ${d.typeName}, replacing with new device"
-                deleteChildDevice(name)
-                d = null
-            }
             if (d && !d.label.equals(label)) {
             	log.debug "Device name changed from ${d.label} to ${label}, renaming"
             	d.rename(label)
@@ -213,7 +208,7 @@ def initialize() {
             }
         }
         else if (getChildDevice(name)) {
-        	log.debug "Removing cleared device ${name}"
+        	log.debug "Removing cleared device ${name} (${label})"
         	deleteChildDevice(name)
         }
     }
@@ -230,7 +225,7 @@ def parseIncomingData() {
 
     log.debug "Data packet: " + data
     def incomingData = data.data
-    for (int i = 1; i <= state.maxNumDevices; i++) {
+    for (int i = 0; i < state.maxNumDevices; i++) {
         def deviceName = settings."device${i}Name"
         def deviceType = settings."device${i}Type"
     	def deviceCode1 = settings."device${i}Code"
@@ -287,7 +282,7 @@ def scheduleEndMotion(i) {
 def handleInactive() {
     log.debug "Running handleEndMotion"
     def reschedule = false
-    for (int i = 1; i <= state.lastActiveTimes?.size(); i++) {
+    for (int i = 0; i < state.lastActiveTimes?.size(); i++) {
         def lastActiveTime = state.lastActiveTimes[i]
         if (lastActiveTime && now() > lastActiveTime + (settings.inactiveCheckTime * 1000)) {
             state.lastActiveTimes[i] = null
@@ -326,9 +321,11 @@ void checkWebhook() {
     	log.warn "Trying to check webhook without a token"
         return
     }
+    log.trace "Existing token: ${state.particleWebhookId}"
     def foundHook = false
     httpGet(uri:"${state.particleAPIUri}/webhooks?access_token=${state.particleToken}") { response -> response.data.each
         { hook ->
+        	log.trace hook
             if (hook.id == state.particleWebhookId) {
                 foundHook = true
                 log.debug "Found existing webhook id: ${hook.id}"
