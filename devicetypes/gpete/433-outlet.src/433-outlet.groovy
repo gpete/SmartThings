@@ -60,3 +60,19 @@ def sendOffEvent() {
 	log.debug "Sending off event"
     sendEvent(name: "switch", value: "off")
 }
+
+def setOnCode(newOnCode) {
+	state.onCode = newOnCode
+}
+
+def getOnCode() {
+	return state.onCode
+}
+
+def setOffCode(newOffCode) {
+	state.offCode = newOffCode
+}
+
+def getOffCode() {
+	return state.offCode
+}
