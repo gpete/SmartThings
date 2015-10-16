@@ -265,8 +265,8 @@ def scheduleEndMotion(i) {
     
     def needsToBeScheduled = true
     for (time in state.lastActiveTimes) {
-    	// Don't schedule if there is a last active time in the array
-    	if (time) {
+    	// Don't schedule if there is a last active time in the array that is less than twice the timeout
+    	if (time && time + (settings.inactiveCheckTime * 1000) > now()) {
         	needsToBeScheduled = false
             break
         }
