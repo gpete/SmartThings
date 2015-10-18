@@ -192,7 +192,7 @@ def initialize() {
             }
 
             def d = getChildDevice(name)
-            if (d && !d.label.equals(label)) {
+            if (!d?.label.equals(label)) {
             	log.debug "Device name changed from ${d.label} to ${label}, renaming"
             	d.rename(label)
             }
@@ -219,7 +219,7 @@ def initialize() {
 
 def parseIncomingData() {
 	def data = new groovy.json.JsonSlurper().parseText(params.data)
-    if (!data || !data.data) {
+    if (!data?.data) {
     	return
     }
 
