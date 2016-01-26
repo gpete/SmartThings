@@ -127,15 +127,15 @@ def getParticleDevices() {
 }
 
 def populateParticleToken() {
-	if (!state.particleToken) {
-    	httpPost(uri: "https://particle:particle@api.particle.io/oauth/token",
-            	 body: [grant_type: "password",
-                        username: settings.particleUsername,
-                        password: settings.particlePassword,
-                        expires_in: 2592000]
-                ) { response -> state.particleToken = response.data.access_token }
-        log.debug("New Particle.io auth token obtained for $particleUsername")
-    }
+    def authEncoded = "particle:particle".bytes.encodeBase64()
+    httpPost(uri: "https://@api.particle.io/oauth/token",
+             headers: [ 'Authorization': "Basic ${authEncoded}" ],
+             body: [grant_type: "password",
+                    username: settings.particleUsername,
+                    password: settings.particlePassword,
+                    expires_in: 2592000]
+            ) { response -> state.particleToken = response.data.access_token }
+    log.debug("New Particle.io auth token obtained for $particleUsername")
 }
 
 def populateSmartThingsAccessToken() {
@@ -192,7 +192,7 @@ def initialize() {
             }
 
             def d = getChildDevice(name)
-            if (!d?.label.equals(label)) {
+            if (d && !label.equals(d.label)) {
             	log.debug "Device name changed from ${d.label} to ${label}, renaming"
             	d.rename(label)
             }
@@ -386,6 +386,18 @@ def sendRFCommand(command) {
                  body: [access_token: state.particleToken,
                         args: command]
                 ) { response -> log.debug "sendRFCommand response: " + response.data }
+    }
+    catch (groovyx.net.http.HttpResponseException ex) {
+    	if (ex.response.status == 401) {
+        	def msg = "Photon returned 401 Unauthorized. Attempting to populate ParticleToken... "
+            try {
+            	populateParticleToken()
+                return msg + "Success!"
+            }
+            catch (all) {
+            	return msg + "Failed!"
+            }
+        }
     }
     catch (all) {
         return "Failed to send command $command to Photon: " + all
