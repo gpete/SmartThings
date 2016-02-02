@@ -128,7 +128,7 @@ def getParticleDevices() {
 
 def populateParticleToken() {
     def authEncoded = "particle:particle".bytes.encodeBase64()
-    httpPost(uri: "https://@api.particle.io/oauth/token",
+    httpPost(uri: "https://api.particle.io/oauth/token",
              headers: [ 'Authorization': "Basic ${authEncoded}" ],
              body: [grant_type: "password",
                     username: settings.particleUsername,
@@ -136,6 +136,30 @@ def populateParticleToken() {
                     expires_in: 2592000]
             ) { response -> state.particleToken = response.data.access_token }
     log.debug("New Particle.io auth token obtained for $particleUsername")
+}
+
+def checkAndPopulateParticleToken() {
+	log.debug("Checking particle token...")
+	try {
+        httpGet("${state.particleAPIUri}/devices?access_token=${state.particleToken}")
+    }
+    catch (groovyx.net.http.HttpResponseException ex) {
+    	if (ex.response.status == 200) {
+        	log.debug("Particle token ok")
+        }
+    	else if (ex.response.status == 401) {
+        	log.debug("Particle returned 401 Unauthorized. Removing old token...")
+            deleteAccessToken()
+            log.debug("Attempting to populate new particleToken...")
+            try {
+            	populateParticleToken()
+                log.debug("Success!")
+            }
+            catch (all) {
+            	log.debug("Failed!")
+            }
+        }
+    }
 }
 
 def populateSmartThingsAccessToken() {
@@ -148,14 +172,14 @@ def populateSmartThingsAccessToken() {
 def installed() {
     log.debug "Installed with settings: ${settings}"    
 	state.appURL = "https://graph.api.smartthings.com/api/smartapps/installations/${app.id}/${state.particleEventName}?access_token=${state.accessToken}"
-    checkWebhook()
 	initialize()
+    checkWebhook()
 }
 
 def updated() {
     unsubscribe()
-    checkWebhook()
     initialize()
+    checkWebhook()
 }
 
 def uninstalled() {
@@ -215,6 +239,7 @@ def initialize() {
 
     def devices = getChildDevices()
     devices.each { log.debug "Initialized device " + it.deviceNetworkId }
+    runEvery30Minutes(checkAndPopulateParticleToken)
 }
 
 def parseIncomingData() {
@@ -325,11 +350,10 @@ void checkWebhook() {
     	log.warn "Trying to check webhook without a token"
         return
     }
-    log.trace "Existing token: ${state.particleWebhookId}"
+    log.trace "Previous webhook id: ${state.particleWebhookId}"
     def foundHook = false
     httpGet(uri:"${state.particleAPIUri}/webhooks?access_token=${state.particleToken}") { response -> response.data.each
         { hook ->
-        	log.trace hook
             if (hook.id == state.particleWebhookId) {
                 foundHook = true
                 log.debug "Found existing webhook id: ${hook.id}"
@@ -359,7 +383,7 @@ void deleteWebhook() {
 
 void deleteAccessToken() {
     try {
-        def authEncoded = "${settings.particleUsername}:${settings.particlePassword}".bytes.encodeBase64()
+        def authEncoded = "${settings.particleUsername.toLowerCase()}:${settings.particlePassword}".bytes.encodeBase64()
         def params = [
             uri: "${state.particleAPIUri}/access_tokens/${state.particleToken}",
             headers: [ 'Authorization': "Basic ${authEncoded}" ]
@@ -386,18 +410,6 @@ def sendRFCommand(command) {
                  body: [access_token: state.particleToken,
                         args: command]
                 ) { response -> log.debug "sendRFCommand response: " + response.data }
-    }
-    catch (groovyx.net.http.HttpResponseException ex) {
-    	if (ex.response.status == 401) {
-        	def msg = "Photon returned 401 Unauthorized. Attempting to populate ParticleToken... "
-            try {
-            	populateParticleToken()
-                return msg + "Success!"
-            }
-            catch (all) {
-            	return msg + "Failed!"
-            }
-        }
     }
     catch (all) {
         return "Failed to send command $command to Photon: " + all
